@@ -1,9 +1,22 @@
 :root {
-  background: #ffffff;
-  color: #000000;
-  font-family: Inter, "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+  --background: #fbfbfa;
+  --foreground: #747470;
+  --muted: #9f9f9b;
+  --panel: #e5e5e1;
+  --stage-dark: #e5e5e1;
+  background: var(--background);
+  color: var(--foreground);
+  font-family:
+    "Akzidenz-Grotesk",
+    "Akzidenz Grotesk",
+    "Berthold Akzidenz Grotesk",
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
   font-synthesis: none;
   text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 * {
@@ -13,7 +26,13 @@
 body {
   min-height: 100vh;
   margin: 0;
-  background: #ffffff;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
 }
 
 button {
@@ -23,19 +42,20 @@ button {
 .page-shell {
   width: 100%;
   min-height: 100vh;
-  padding: 96px;
+  padding: 52px clamp(24px, 5vw, 72px) 80px;
 }
 
 .site-header {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 24px;
+  gap: 2px;
+  margin-bottom: 72px;
 }
 
 .site-header h1 {
   margin: 0;
-  font-size: 48px;
+  color: #5e5e5a;
+  font-size: 28px;
   font-weight: 700;
   line-height: 1;
   letter-spacing: 0;
@@ -43,9 +63,9 @@ button {
 
 .site-header p {
   margin: 0;
-  color: rgba(0, 0, 0, 0.43);
-  font-size: 24px;
-  font-weight: 400;
+  color: #858581;
+  font-size: 20px;
+  font-weight: 700;
   line-height: 1.2;
   letter-spacing: 0;
 }
@@ -53,33 +73,53 @@ button {
 .letter-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: 34px 28px;
   width: 100%;
 }
 
 .letter-card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
-  height: 351.5px;
-  padding: 8px;
+  padding: 0;
   overflow: hidden;
   border: 0;
   border-radius: 0;
-  background: #ffffff;
+  background: transparent;
+  scroll-margin-top: 32px;
+}
+
+.letter-card:hover .letter-label {
+  color: #5e5e5a;
 }
 
 .letter-stage {
   position: relative;
   flex: 1 1 auto;
+  aspect-ratio: 1 / 1;
   min-height: 0;
   overflow: hidden;
-  background: #dfdfdf;
+  border-radius: 2px;
+  background: var(--panel);
+}
+
+.letter-stage-link {
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.letter-stage-link:focus-visible,
+.letter-label a:focus-visible,
+.letter-info-button:focus-visible {
+  outline: 2px solid #858581;
+  outline-offset: 4px;
 }
 
 .letter-stage.is-interactive {
-  background: #242a30;
+  background: var(--stage-dark);
 }
 
 .letter-stage canvas {
@@ -88,21 +128,75 @@ button {
   height: 100%;
 }
 
+.letter-info-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(251, 251, 250, 0.78);
+  color: #9c9c98;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+.letter-info-button:hover,
+.letter-info-button[aria-expanded="true"] {
+  background: rgba(251, 251, 250, 0.94);
+  color: #5e5e5a;
+}
+
+.letter-info-panel {
+  position: absolute;
+  inset: auto 10px 10px 10px;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px;
+  border-radius: 2px;
+  background: rgba(251, 251, 250, 0.94);
+  color: #6f6f6b;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.letter-info-panel[hidden] {
+  display: none;
+}
+
+.letter-info-panel strong {
+  color: #5e5e5a;
+}
+
 .letter-label {
   flex: 0 0 auto;
   margin: 0;
-  color: #000000;
-  font-size: 18px;
-  font-weight: 400;
+  color: #a6a6a2;
+  font-size: 22px;
+  font-weight: 700;
   line-height: 1.2;
-  text-align: center;
+  text-align: left;
   letter-spacing: 0;
   white-space: nowrap;
+  transition: color 160ms ease;
 }
 
 @media (max-width: 1100px) {
   .page-shell {
-    padding: 64px;
+    padding: 44px 32px 64px;
   }
 
   .letter-grid {
@@ -112,27 +206,28 @@ button {
 
 @media (max-width: 760px) {
   .page-shell {
-    padding: 32px 20px;
+    padding: 32px 20px 52px;
+  }
+
+  .site-header {
+    margin-bottom: 44px;
   }
 
   .site-header h1 {
-    font-size: 36px;
+    font-size: 26px;
   }
 
   .site-header p {
-    font-size: 20px;
+    font-size: 18px;
   }
 
   .letter-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .letter-card {
-    height: 260px;
+    gap: 28px 18px;
   }
 
   .letter-label {
-    font-size: 16px;
+    font-size: 18px;
   }
 }
 
