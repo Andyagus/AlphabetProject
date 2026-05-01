@@ -9,6 +9,7 @@ const COMPRESSOR_SOUND_URL = new URL(
   "../../exports/assets/compressor-sound-trimmed.mp4",
   import.meta.url,
 ).href;
+const SWITCH_SOUND_URL = new URL("../../exports/assets/switchSound.mp3", import.meta.url).href;
 const ROOM_SIZE = 1.5;
 const FLOOR_Y = -ROOM_SIZE / 2;
 const BASE_LETTER_ROTATION_X = 0;
@@ -85,6 +86,7 @@ export function mountLetterA(container) {
   let pointerDown = null;
   let compressorOn = false;
   const compressorSound = createAirCompressorSound();
+  const switchSound = createSwitchSound();
 
   function resize() {
     const width = Math.max(1, container.clientWidth);
@@ -106,8 +108,8 @@ export function mountLetterA(container) {
     compressorSound?.stop();
   }
 
-  function fadeOutCompressorSound() {
-    compressorSound?.fadeOut();
+  function playSwitchClick() {
+    switchSound?.start();
   }
 
   function updateCompressorSwitch() {
@@ -131,6 +133,7 @@ export function mountLetterA(container) {
     floorVelocity = 0;
     heliumVelocity = 0;
     stopCompressorSound();
+    playSwitchClick();
     setMorphProgress(heliumProgress * keyTargets.length);
   }
 
@@ -261,7 +264,8 @@ export function mountLetterA(container) {
         isPuffing = false;
         compressorOn = false;
         updateCompressorSwitch();
-        fadeOutCompressorSound();
+        stopCompressorSound();
+        playSwitchClick();
         compressorSwitch.hidden = true;
         setMorphProgress(keyTargets.length);
       }
@@ -386,13 +390,18 @@ function createLetterRoom() {
 }
 
 function createAirCompressorSound() {
-  const audio = new Audio(COMPRESSOR_SOUND_URL);
-  audio.loop = true;
-  audio.preload = "auto";
-  audio.volume = 0.82;
-  audio.load();
+  let audio = createCompressorAudio();
   let isPlaying = false;
-  let fadeTimer = null;
+  let playRequest = null;
+
+  function createCompressorAudio() {
+    const nextAudio = new Audio(COMPRESSOR_SOUND_URL);
+    nextAudio.loop = true;
+    nextAudio.preload = "auto";
+    nextAudio.volume = 0.82;
+    nextAudio.load();
+    return nextAudio;
+  }
 
   function seekToCompressorStart() {
     try {
@@ -406,38 +415,45 @@ function createAirCompressorSound() {
     start() {
       if (isPlaying) return;
 
-      window.clearInterval(fadeTimer);
       audio.volume = 0.82;
+      if (!audio.src) {
+        audio = createCompressorAudio();
+      }
       isPlaying = true;
       seekToCompressorStart();
-      void audio.play().catch(() => {
+      playRequest = audio.play();
+      void playRequest.catch(() => {
         isPlaying = false;
+      }).finally(() => {
+        playRequest = null;
       });
     },
     stop() {
-      window.clearInterval(fadeTimer);
-      if (!isPlaying && audio.paused) return;
-
       isPlaying = false;
+      playRequest = null;
       audio.pause();
       audio.volume = 0.82;
+      audio.loop = false;
       seekToCompressorStart();
+      audio.removeAttribute("src");
+      audio.load();
+      audio = createCompressorAudio();
+      audio.loop = true;
     },
-    fadeOut() {
-      window.clearInterval(fadeTimer);
-      if (!isPlaying && audio.paused) return;
+  };
+}
 
-      isPlaying = false;
-      fadeTimer = window.setInterval(() => {
-        audio.volume = Math.max(0, audio.volume - 0.065);
+function createSwitchSound() {
+  const audio = new Audio(SWITCH_SOUND_URL);
+  audio.preload = "auto";
+  audio.volume = 0.95;
+  audio.load();
 
-        if (audio.volume <= 0.001) {
-          window.clearInterval(fadeTimer);
-          audio.pause();
-          audio.volume = 0.82;
-          seekToCompressorStart();
-        }
-      }, 40);
+  return {
+    start() {
+      audio.pause();
+      audio.currentTime = 0;
+      void audio.play();
     },
   };
 }
