@@ -31,13 +31,6 @@ for (const experiment of experiments) {
     stage.append(stageLink);
   }
 
-  const infoButton = document.createElement("button");
-  infoButton.className = "letter-info-button";
-  infoButton.type = "button";
-  infoButton.textContent = "i";
-  infoButton.ariaLabel = `About ${experiment.title}`;
-  infoButton.ariaExpanded = "false";
-
   const infoPanel = document.createElement("div");
   infoPanel.className = "letter-info-panel";
   infoPanel.hidden = true;
@@ -46,15 +39,19 @@ for (const experiment of experiments) {
   infoText.textContent = experiment.info;
 
   infoPanel.append(infoText);
-  stage.append(infoButton, infoPanel);
+  stage.append(infoPanel);
 
   const label = document.createElement("p");
   label.className = "letter-label";
 
-  const labelLink = document.createElement("a");
-  labelLink.href = letterPath;
-  labelLink.textContent = experiment.title;
-  label.append(labelLink);
+  const labelButton = document.createElement("button");
+  labelButton.className = "letter-label-button";
+  labelButton.type = "button";
+  labelButton.textContent = experiment.title;
+  labelButton.ariaExpanded = "false";
+  labelButton.ariaControls = `${card.id}-info`;
+  infoPanel.id = `${card.id}-info`;
+  label.append(labelButton);
 
   card.append(stage, label);
   grid.append(card);
@@ -64,26 +61,26 @@ for (const experiment of experiments) {
     experiment.mount(stage);
   }
 
-  infoButton.addEventListener("click", () => {
+  labelButton.addEventListener("click", () => {
     const willOpen = infoPanel.hidden;
 
     for (const panel of grid.querySelectorAll(".letter-info-panel")) {
       panel.hidden = true;
     }
 
-    for (const button of grid.querySelectorAll(".letter-info-button")) {
+    for (const button of grid.querySelectorAll(".letter-label-button")) {
       button.ariaExpanded = "false";
     }
 
     infoPanel.hidden = !willOpen;
-    infoButton.ariaExpanded = String(willOpen);
+    labelButton.ariaExpanded = String(willOpen);
   });
 
   stage.addEventListener("click", (event) => {
-    if (event.target.closest(".letter-info-button, .letter-info-panel")) return;
+    if (event.target.closest(".letter-info-panel")) return;
 
     infoPanel.hidden = true;
-    infoButton.ariaExpanded = "false";
+    labelButton.ariaExpanded = "false";
   });
 }
 
@@ -94,7 +91,7 @@ document.addEventListener("keydown", (event) => {
     panel.hidden = true;
   }
 
-  for (const button of grid.querySelectorAll(".letter-info-button")) {
+  for (const button of grid.querySelectorAll(".letter-label-button")) {
     button.ariaExpanded = "false";
   }
 });

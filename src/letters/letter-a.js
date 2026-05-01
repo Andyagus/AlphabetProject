@@ -3,12 +3,14 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
 const MODEL_URL = new URL("../../exports/Letter_A_puff_morphs_full.glb", import.meta.url).href;
+const ROOM_SIZE = 1.5;
+const FLOOR_Y = -ROOM_SIZE / 2;
 
 export function mountLetterA(container) {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(34, 1, 0.01, 100);
-  camera.position.set(0.45, 1.65, 2.05);
-  camera.lookAt(0, 0, 0);
+  camera.position.set(0.58, 0.82, 2.35);
+  camera.lookAt(0, -0.06, 0);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -20,16 +22,16 @@ export function mountLetterA(container) {
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
-  controls.enablePan = true;
-  controls.panSpeed = 0.9;
-  controls.rotateSpeed = 1.35;
-  controls.zoomSpeed = 0.9;
+  controls.enableRotate = false;
+  controls.enablePan = false;
+  controls.enableZoom = false;
   controls.minDistance = 0.9;
   controls.maxDistance = 5;
-  controls.target.set(0, 0, 0);
+  controls.target.set(0, -0.06, 0);
 
   scene.environment = createWarehouseEnvironmentMap();
   scene.add(new THREE.HemisphereLight(0xf4f7ff, 0x1b1d22, 1.1));
+  scene.add(createLetterRoom());
 
   const keyLight = new THREE.DirectionalLight(0xffffff, 2.4);
   keyLight.position.set(-1.8, -2.3, 3.2);
@@ -43,7 +45,10 @@ export function mountLetterA(container) {
   let playStart = 0;
   let isPuffing = false;
   let isHoldingFinal = false;
-  let idleTime = 0;
+  let restY = 0;
+  let floorLift = 0;
+  let floorVelocity = 0;
+  let previousTime = 0;
   let pointerDown = null;
 
   function resize() {
@@ -62,6 +67,7 @@ export function mountLetterA(container) {
     playStart = performance.now();
     isPuffing = true;
     isHoldingFinal = false;
+    floorVelocity = Math.max(floorVelocity, 0.12);
   }
 
   new GLTFLoader().load(MODEL_URL, (gltf) => {
@@ -86,7 +92,10 @@ export function mountLetterA(container) {
     const size = box.getSize(new THREE.Vector3());
 
     gltf.scene.position.sub(center);
-    group.scale.setScalar(0.74 / Math.max(size.x, size.y, size.z));
+    const scale = 0.74 / Math.max(size.x, size.y, size.z);
+    group.scale.setScalar(scale);
+    restY = FLOOR_Y + size.y * scale * 0.5 + 0.015;
+    group.position.set(0, restY, 0);
     group.rotation.x = 0;
     group.rotation.z = -0.08;
     setMorphProgress(0);
@@ -147,7 +156,8 @@ export function mountLetterA(container) {
   function animate(time) {
     requestAnimationFrame(animate);
 
-    idleTime = time * 0.001;
+    const deltaTime = Math.min((time - previousTime) / 1000 || 0, 0.05);
+    previousTime = time;
     const puffDuration = 4.5;
 
     if (isPuffing) {
@@ -168,14 +178,106 @@ export function mountLetterA(container) {
       setMorphProgress(0);
     }
 
-    const breathAmount = isHoldingFinal ? 0.012 : 0.018;
-    group.position.z = Math.sin(idleTime * 1.8) * breathAmount;
+    const springStrength = 32;
+    const springDamping = 10;
+    floorVelocity += (-floorLift * springStrength - floorVelocity * springDamping) * deltaTime;
+    floorLift += floorVelocity * deltaTime;
+
+    if (floorLift < 0) {
+      floorLift = 0;
+      floorVelocity = 0;
+    }
+
+    group.position.y = restY + floorLift;
+    group.position.z = 0;
 
     controls.update();
     renderer.render(scene, camera);
   }
 
   animate(0);
+}
+
+function createLetterRoom() {
+  const room = new THREE.Group();
+  const size = ROOM_SIZE;
+  const half = size / 2;
+
+  const wallMaterial = new THREE.MeshBasicMaterial({
+    color: 0xf8f8f5,
+    transparent: true,
+    opacity: 0.3,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const sideMaterial = wallMaterial.clone();
+  sideMaterial.opacity = 0.18;
+
+  const backWall = new THREE.Mesh(new THREE.PlaneGeometry(size, size), wallMaterial);
+  backWall.position.z = -half;
+  room.add(backWall);
+
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(size, size), wallMaterial.clone());
+  floor.material.opacity = 0.36;
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = FLOOR_Y;
+  room.add(floor);
+
+  const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(size, size), sideMaterial.clone());
+  leftWall.rotation.y = Math.PI / 2;
+  leftWall.position.x = -half;
+  room.add(leftWall);
+
+  const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(size, size), sideMaterial.clone());
+  rightWall.rotation.y = -Math.PI / 2;
+  rightWall.position.x = half;
+  room.add(rightWall);
+
+  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(size, size), sideMaterial.clone());
+  ceiling.material.opacity = 0.12;
+  ceiling.rotation.x = Math.PI / 2;
+  ceiling.position.y = half;
+  room.add(ceiling);
+
+  const shadow = new THREE.Mesh(
+    new THREE.CircleGeometry(0.28, 48),
+    new THREE.MeshBasicMaterial({
+      color: 0x6d6d68,
+      transparent: true,
+      opacity: 0.1,
+      depthWrite: false,
+    }),
+  );
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.scale.set(1.45, 0.62, 1);
+  shadow.position.set(0, FLOOR_Y + 0.003, 0.03);
+  room.add(shadow);
+
+  const edgeGeometry = new THREE.EdgesGeometry(new THREE.BoxGeometry(size, size, size));
+  const edgeMaterial = new THREE.LineBasicMaterial({
+    color: 0xbebeba,
+    transparent: true,
+    opacity: 0.42,
+  });
+  const edges = new THREE.LineSegments(edgeGeometry, edgeMaterial);
+  room.add(edges);
+
+  const gridMaterial = new THREE.LineBasicMaterial({
+    color: 0xd7d7d2,
+    transparent: true,
+    opacity: 0.22,
+  });
+  const gridGeometry = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(-half, -half, -half),
+    new THREE.Vector3(half, -half, -half),
+    new THREE.Vector3(-half, 0, -half),
+    new THREE.Vector3(half, 0, -half),
+    new THREE.Vector3(0, -half, -half),
+    new THREE.Vector3(0, half, -half),
+  ]);
+  room.add(new THREE.LineSegments(gridGeometry, gridMaterial));
+
+  return room;
 }
 
 function createWarehouseEnvironmentMap() {
