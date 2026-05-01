@@ -390,18 +390,13 @@ function createLetterRoom() {
 }
 
 function createAirCompressorSound() {
-  let audio = createCompressorAudio();
-  let isPlaying = false;
-  let playRequest = null;
+  const audio = new Audio(COMPRESSOR_SOUND_URL);
+  audio.preload = "auto";
+  audio.volume = 0.82;
+  audio.load();
 
-  function createCompressorAudio() {
-    const nextAudio = new Audio(COMPRESSOR_SOUND_URL);
-    nextAudio.loop = true;
-    nextAudio.preload = "auto";
-    nextAudio.volume = 0.82;
-    nextAudio.load();
-    return nextAudio;
-  }
+  let isPlaying = false;
+  let playbackToken = 0;
 
   function seekToCompressorStart() {
     try {
@@ -416,29 +411,28 @@ function createAirCompressorSound() {
       if (isPlaying) return;
 
       audio.volume = 0.82;
-      if (!audio.src) {
-        audio = createCompressorAudio();
-      }
+      audio.loop = false;
       isPlaying = true;
+      playbackToken += 1;
+      const currentToken = playbackToken;
       seekToCompressorStart();
-      playRequest = audio.play();
-      void playRequest.catch(() => {
+
+      void audio.play().then(() => {
+        if (!isPlaying || currentToken !== playbackToken) {
+          audio.pause();
+          seekToCompressorStart();
+        }
+      }).catch(() => {
         isPlaying = false;
-      }).finally(() => {
-        playRequest = null;
       });
     },
     stop() {
+      playbackToken += 1;
       isPlaying = false;
-      playRequest = null;
+      audio.loop = false;
       audio.pause();
       audio.volume = 0.82;
-      audio.loop = false;
       seekToCompressorStart();
-      audio.removeAttribute("src");
-      audio.load();
-      audio = createCompressorAudio();
-      audio.loop = true;
     },
   };
 }
