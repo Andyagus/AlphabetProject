@@ -3,8 +3,20 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
 const MODEL_URL = new URL("../../exports/Letter_A_puff_morphs_full.glb", import.meta.url).href;
+const SWITCH_OFF_URL = new URL("../../exports/assets/toggle-off-ui.png", import.meta.url).href;
+const SWITCH_ON_URL = new URL("../../exports/assets/toggle-on-ui.png", import.meta.url).href;
+const COMPRESSOR_SOUND_URL = new URL(
+  "../../exports/assets/compressor-sound-trimmed.mp4",
+  import.meta.url,
+).href;
 const ROOM_SIZE = 1.5;
 const FLOOR_Y = -ROOM_SIZE / 2;
+const BASE_LETTER_ROTATION_X = 0;
+const BASE_LETTER_ROTATION_Z = -0.08;
+const FLOAT_STOP_RATIO = 0.54;
+const LETTER_SCALE = 0.79;
+const PUFF_DURATION = 9;
+const COMPRESSOR_SOUND_START_TIME = 0.01;
 
 export function mountLetterA(container) {
   const scene = new THREE.Scene();
@@ -19,6 +31,20 @@ export function mountLetterA(container) {
   renderer.toneMappingExposure = 1.45;
   container.appendChild(renderer.domElement);
 
+  const compressorSwitch = document.createElement("button");
+  compressorSwitch.className = "compressor-switch";
+  compressorSwitch.type = "button";
+  compressorSwitch.ariaLabel = "Toggle air compressor";
+  compressorSwitch.ariaPressed = "false";
+
+  const compressorSwitchImage = document.createElement("img");
+  compressorSwitchImage.className = "compressor-switch__image";
+  compressorSwitchImage.src = SWITCH_OFF_URL;
+  compressorSwitchImage.alt = "";
+  compressorSwitchImage.draggable = false;
+  compressorSwitch.append(compressorSwitchImage);
+  container.appendChild(compressorSwitch);
+
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
@@ -31,7 +57,8 @@ export function mountLetterA(container) {
 
   scene.environment = createWarehouseEnvironmentMap();
   scene.add(new THREE.HemisphereLight(0xf4f7ff, 0x1b1d22, 1.1));
-  scene.add(createLetterRoom());
+  const room = createLetterRoom();
+  scene.add(room);
 
   const keyLight = new THREE.DirectionalLight(0xffffff, 2.4);
   keyLight.position.set(-1.8, -2.3, 3.2);
@@ -44,12 +71,20 @@ export function mountLetterA(container) {
   let mesh = null;
   let playStart = 0;
   let isPuffing = false;
-  let isHoldingFinal = false;
   let restY = 0;
   let floorLift = 0;
   let floorVelocity = 0;
+  let fillProgress = 0;
+  let puffStartProgress = 0;
+  let heliumProgress = 0;
+  let heliumLift = 0;
+  let heliumVelocity = 0;
+  let letterHalfHeight = 0.34;
+  let maxHeliumLift = 0.42;
   let previousTime = 0;
   let pointerDown = null;
+  let compressorOn = false;
+  const compressorSound = createAirCompressorSound();
 
   function resize() {
     const width = Math.max(1, container.clientWidth);
@@ -63,11 +98,53 @@ export function mountLetterA(container) {
   resizeObserver.observe(container);
   resize();
 
+  function startCompressorSound() {
+    compressorSound?.start();
+  }
+
+  function stopCompressorSound() {
+    compressorSound?.stop();
+  }
+
+  function fadeOutCompressorSound() {
+    compressorSound?.fadeOut();
+  }
+
+  function updateCompressorSwitch() {
+    compressorSwitch.classList.toggle("is-on", compressorOn);
+    compressorSwitch.ariaPressed = String(compressorOn);
+    compressorSwitchImage.src = compressorOn ? SWITCH_ON_URL : SWITCH_OFF_URL;
+  }
+
   function startPuff() {
+    if (fillProgress >= 1) return;
+
+    puffStartProgress = fillProgress;
     playStart = performance.now();
     isPuffing = true;
-    isHoldingFinal = false;
     floorVelocity = Math.max(floorVelocity, 0.12);
+    startCompressorSound();
+  }
+
+  function resetPuff() {
+    isPuffing = false;
+    floorVelocity = 0;
+    heliumVelocity = 0;
+    stopCompressorSound();
+    setMorphProgress(heliumProgress * keyTargets.length);
+  }
+
+  function setCompressorOn(nextCompressorOn) {
+    compressorOn = nextCompressorOn;
+    updateCompressorSwitch();
+
+    if (!mesh) return;
+
+    if (compressorOn) {
+      startPuff();
+    } else {
+      resetPuff();
+    }
   }
 
   new GLTFLoader().load(MODEL_URL, (gltf) => {
@@ -92,13 +169,27 @@ export function mountLetterA(container) {
     const size = box.getSize(new THREE.Vector3());
 
     gltf.scene.position.sub(center);
-    const scale = 0.74 / Math.max(size.x, size.y, size.z);
+    const scale = LETTER_SCALE / Math.max(size.x, size.y, size.z);
     group.scale.setScalar(scale);
-    restY = FLOOR_Y + size.y * scale * 0.5 + 0.015;
+    letterHalfHeight = size.y * scale * 0.5;
+    restY = FLOOR_Y + letterHalfHeight + 0.015;
+    maxHeliumLift = Math.max(
+      0.12,
+      (ROOM_SIZE / 2 - letterHalfHeight - restY - 0.08) * FLOAT_STOP_RATIO,
+    );
     group.position.set(0, restY, 0);
-    group.rotation.x = 0;
-    group.rotation.z = -0.08;
+    group.rotation.x = BASE_LETTER_ROTATION_X;
+    group.rotation.z = BASE_LETTER_ROTATION_Z;
     setMorphProgress(0);
+
+    if (compressorOn) {
+      startPuff();
+    }
+  });
+
+  compressorSwitch.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setCompressorOn(!compressorOn);
   });
 
   renderer.domElement.addEventListener("pointerdown", (event) => {
@@ -117,7 +208,7 @@ export function mountLetterA(container) {
     pointerDown = null;
 
     if (canStart && distance < 6) {
-      startPuff();
+      setCompressorOn(true);
     }
   });
 
@@ -158,24 +249,24 @@ export function mountLetterA(container) {
 
     const deltaTime = Math.min((time - previousTime) / 1000 || 0, 0.05);
     previousTime = time;
-    const puffDuration = 4.5;
 
     if (isPuffing) {
       const elapsed = Math.max(0, (performance.now() - playStart) / 1000);
-      const playback = Math.min(elapsed / puffDuration, 1);
-      const eased = playback * playback * (3 - 2 * playback);
+      fillProgress = Math.min(puffStartProgress + elapsed / PUFF_DURATION, 1);
+      heliumProgress = fillProgress * fillProgress * (3 - 2 * fillProgress);
 
-      setMorphProgress(eased * keyTargets.length);
+      setMorphProgress(heliumProgress * keyTargets.length);
 
-      if (playback >= 1) {
+      if (fillProgress >= 1) {
         isPuffing = false;
-        isHoldingFinal = true;
+        compressorOn = false;
+        updateCompressorSwitch();
+        fadeOutCompressorSound();
+        compressorSwitch.hidden = true;
         setMorphProgress(keyTargets.length);
       }
-    } else if (isHoldingFinal) {
-      setMorphProgress(keyTargets.length);
     } else {
-      setMorphProgress(0);
+      setMorphProgress(heliumProgress * keyTargets.length);
     }
 
     const springStrength = 32;
@@ -188,8 +279,50 @@ export function mountLetterA(container) {
       floorVelocity = 0;
     }
 
-    group.position.y = restY + floorLift;
+    const desiredHeliumLift = maxHeliumLift * Math.pow(heliumProgress, 1.35);
+    const buoyancyStrength = 10.5;
+    const airDamping = 3.4;
+    heliumVelocity +=
+      ((desiredHeliumLift - heliumLift) * buoyancyStrength - heliumVelocity * airDamping) *
+      deltaTime;
+    heliumLift += heliumVelocity * deltaTime;
+
+    if (heliumLift > maxHeliumLift) {
+      heliumLift = maxHeliumLift;
+      heliumVelocity = Math.min(0, heliumVelocity * -0.22);
+    }
+
+    if (heliumLift < 0) {
+      heliumLift = 0;
+      heliumVelocity = 0;
+    }
+
+    const ceilingEase = maxHeliumLift > 0 ? 1 - heliumLift / maxHeliumLift : 0;
+    const topFloat = heliumProgress * (0.35 + 0.65 * ceilingEase);
+    const floatBob = topFloat * Math.sin(time * 0.0024) * 0.028;
+    const floatSway = heliumProgress * Math.sin(time * 0.0015) * 0.044;
+    const floatTilt = heliumProgress * Math.sin(time * 0.0018) * 0.055;
+    const liftRatio = maxHeliumLift > 0 ? heliumLift / maxHeliumLift : 0;
+    const forwardPitch =
+      liftRatio * 0.5 + heliumProgress * Math.sin(time * 0.0012) * 0.034;
+    const compressorShake = isPuffing ? 1 - heliumProgress * 0.35 : 0;
+    const letterVibrationX =
+      Math.sin(time * 0.42) * 0.0045 * compressorShake +
+      Math.sin(time * 0.73 + 0.6) * 0.0025 * compressorShake;
+    const letterVibrationY = Math.sin(time * 0.58 + 1.2) * 0.0038 * compressorShake;
+    const letterVibrationTilt = Math.sin(time * 0.47 + 0.4) * 0.011 * compressorShake;
+
+    group.position.x = floatSway + letterVibrationX;
+    group.position.y = restY + floorLift + heliumLift + floatBob + letterVibrationY;
     group.position.z = 0;
+    group.rotation.x = BASE_LETTER_ROTATION_X + forwardPitch;
+    group.rotation.z = BASE_LETTER_ROTATION_Z + floatTilt + letterVibrationTilt;
+
+    room.position.x =
+      Math.sin(time * 0.48) * 0.008 * compressorShake +
+      Math.sin(time * 0.86 + 0.9) * 0.0035 * compressorShake;
+    room.position.y = Math.sin(time * 0.64 + 1.4) * 0.0065 * compressorShake;
+    room.rotation.z = Math.sin(time * 0.52 + 0.6) * 0.0075 * compressorShake;
 
     controls.update();
     renderer.render(scene, camera);
@@ -204,21 +337,22 @@ function createLetterRoom() {
   const half = size / 2;
 
   const wallMaterial = new THREE.MeshBasicMaterial({
-    color: 0xf8f8f5,
+    color: 0xf3f3f0,
     transparent: true,
-    opacity: 0.3,
+    opacity: 0.46,
     depthWrite: false,
     side: THREE.DoubleSide,
   });
   const sideMaterial = wallMaterial.clone();
-  sideMaterial.opacity = 0.18;
+  sideMaterial.opacity = 0.28;
 
   const backWall = new THREE.Mesh(new THREE.PlaneGeometry(size, size), wallMaterial);
   backWall.position.z = -half;
   room.add(backWall);
 
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(size, size), wallMaterial.clone());
-  floor.material.opacity = 0.36;
+  floor.material.color.setHex(0xe7e7e2);
+  floor.material.opacity = 0.52;
   floor.rotation.x = -Math.PI / 2;
   floor.position.y = FLOOR_Y;
   room.add(floor);
@@ -239,45 +373,73 @@ function createLetterRoom() {
   ceiling.position.y = half;
   room.add(ceiling);
 
-  const shadow = new THREE.Mesh(
-    new THREE.CircleGeometry(0.28, 48),
-    new THREE.MeshBasicMaterial({
-      color: 0x6d6d68,
-      transparent: true,
-      opacity: 0.1,
-      depthWrite: false,
-    }),
-  );
-  shadow.rotation.x = -Math.PI / 2;
-  shadow.scale.set(1.45, 0.62, 1);
-  shadow.position.set(0, FLOOR_Y + 0.003, 0.03);
-  room.add(shadow);
-
   const edgeGeometry = new THREE.EdgesGeometry(new THREE.BoxGeometry(size, size, size));
   const edgeMaterial = new THREE.LineBasicMaterial({
-    color: 0xbebeba,
+    color: 0x80807b,
     transparent: true,
-    opacity: 0.42,
+    opacity: 0.48,
   });
   const edges = new THREE.LineSegments(edgeGeometry, edgeMaterial);
   room.add(edges);
 
-  const gridMaterial = new THREE.LineBasicMaterial({
-    color: 0xd7d7d2,
-    transparent: true,
-    opacity: 0.22,
-  });
-  const gridGeometry = new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(-half, -half, -half),
-    new THREE.Vector3(half, -half, -half),
-    new THREE.Vector3(-half, 0, -half),
-    new THREE.Vector3(half, 0, -half),
-    new THREE.Vector3(0, -half, -half),
-    new THREE.Vector3(0, half, -half),
-  ]);
-  room.add(new THREE.LineSegments(gridGeometry, gridMaterial));
-
   return room;
+}
+
+function createAirCompressorSound() {
+  const audio = new Audio(COMPRESSOR_SOUND_URL);
+  audio.loop = true;
+  audio.preload = "auto";
+  audio.volume = 0.82;
+  audio.load();
+  let isPlaying = false;
+  let fadeTimer = null;
+
+  function seekToCompressorStart() {
+    try {
+      audio.currentTime = COMPRESSOR_SOUND_START_TIME;
+    } catch {
+      audio.currentTime = 0;
+    }
+  }
+
+  return {
+    start() {
+      if (isPlaying) return;
+
+      window.clearInterval(fadeTimer);
+      audio.volume = 0.82;
+      isPlaying = true;
+      seekToCompressorStart();
+      void audio.play().catch(() => {
+        isPlaying = false;
+      });
+    },
+    stop() {
+      window.clearInterval(fadeTimer);
+      if (!isPlaying && audio.paused) return;
+
+      isPlaying = false;
+      audio.pause();
+      audio.volume = 0.82;
+      seekToCompressorStart();
+    },
+    fadeOut() {
+      window.clearInterval(fadeTimer);
+      if (!isPlaying && audio.paused) return;
+
+      isPlaying = false;
+      fadeTimer = window.setInterval(() => {
+        audio.volume = Math.max(0, audio.volume - 0.065);
+
+        if (audio.volume <= 0.001) {
+          window.clearInterval(fadeTimer);
+          audio.pause();
+          audio.volume = 0.82;
+          seekToCompressorStart();
+        }
+      }, 40);
+    },
+  };
 }
 
 function createWarehouseEnvironmentMap() {

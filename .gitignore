@@ -3,3 +3,7 @@
 dist/
 node_modules/
 .idea/
+exports/assets/*-chroma.png
+exports/assets/toggle-on.png
+exports/assets/toggle-off.png
+exports/assets/compressor-sound.mp4
